@@ -1,0 +1,2 @@
+{"schema": "atelier.case/1", "repo": "alpha", "work_key": "alpha:main:W-001", "pbi": "PBI-003", "task": {"title": "Render list (archive copy)"}, "result": {"attempts": [{"cause": "spec"}, {"cause": ["spec", "env"]}]}}
+{"schema": "atelier.case/1", "repo": "alpha", "work_key": "alpha:main:W-001", "pbi": "PBI-004", "task": {"title": "Archive only"}, "result": {"attempts": [{"cause": ["env"]}]}}

@@ -1,0 +1,5 @@
+{"schema": "atelier.case/1", "repo": "alpha", "work_key": "alpha:main:W-001", "pbi": "PBI-002", "task": {"title": "Parse config"}, "result": {"attempts": [{"cause": ["model", "env"]}, {"cause": null}]}}
+{"schema": "atelier.case/1", "repo": "alpha", "work_key": "alpha:main:W-001", "pbi": "PBI-003", "task": {"title": "Render list"}, "result": {"attempts": [{"cause": "spec"}, {"cause": ["spec", "env"]}]}}
+{"schema": "atelier.case/1", "repo": "alpha", "work_key": "alpha:main:W-001", "pbi": "PBI-001", "task": {"title": "Scaffold"}, "result": {"attempts": [{"cause": null}]}}
+{"schema": "atelier.case/2", "repo": "alpha", "work_key": "alpha:main:W-001", "pbi": "PBI-005", "task": {"title": "Future shape"}}
+{"schema": "atelier.case/1", "repo": "alpha", "work_key":
