@@ -1,0 +1,123 @@
+# Atelier Desk のアーキテクチャ図
+# __MONO__ は単色ロゴの色。render.py がライト用 (000000) とダーク用 (ffffff) に置き換えて 2 枚描く
+# 描き直し: python ~/.claude/skills/arch-diagram/versions/v1.1/scripts/render.py docs/architecture/atelier-desk.d2
+direction: down
+
+vars: {
+  d2-config: {
+    layout-engine: elk
+    pad: 40
+  }
+}
+
+classes: {
+  svc: {
+    shape: rectangle
+    style: {
+      border-radius: 12
+      font-size: 15
+    }
+  }
+  ext: {
+    shape: image
+    width: 64
+    height: 64
+    label.near: outside-bottom-center
+  }
+  zone: {
+    style.border-radius: 16
+  }
+  saas: {
+    style: {
+      border-radius: 16
+      stroke-dash: 3
+    }
+  }
+}
+
+user: 利用者 {
+  class: ext
+  icon: https://icons.terrastruct.com/essentials%2F359-users.svg
+}
+
+app: "Atelier Desk (Wails)" {
+  class: zone
+  icon: https://cdn.simpleicons.org/wails
+
+  ui: "画面\nReact / TypeScript\nfrontend/src/api の DeskClient" {
+    class: svc
+    icon: https://cdn.simpleicons.org/react
+  }
+
+  desk: "Wails の境界 internal/desk\nService\nhome:changed · job:output · connection:changed" {
+    class: svc
+    icon: https://cdn.simpleicons.org/go
+  }
+
+  go: "Go のモジュール" {
+    class: zone
+    icon: https://cdn.simpleicons.org/go
+    direction: right
+
+    atelier: "atelier\nAtelier への問い合わせ口" {
+      class: svc
+    }
+    job: "job\n子プロセスの実行" {
+      class: svc
+    }
+    catalog: "catalog\n部品・フロー・スキルの対応" {
+      class: svc
+    }
+    skills: "skills\nスキルの走査" {
+      class: svc
+    }
+    homestore: "homestore\nhome の保存と監視" {
+      class: svc
+    }
+    runs: "runs\n実行記録の読み取り" {
+      class: svc
+    }
+    paths: "paths / appconfig\n置き場所とアプリの設定" {
+      class: svc
+    }
+  }
+}
+
+external: 外部 {
+  class: saas
+  direction: down
+
+  cli: "Atelier の CLI\ndesk_*.py (Python 3.10 以上)" {
+    class: svc
+    icon: https://cdn.simpleicons.org/python
+  }
+  home: "home\n~/.config/atelier" {
+    class: svc
+  }
+  skilldir: "スキル\n~/.claude/skills とプラグイン" {
+    class: svc
+  }
+  repo: "登録したリポジトリ\ndocs/pbi/ とアーカイブ" {
+    class: svc
+  }
+  appdata: "アプリの設定\n%APPDATA%/atelier-desk" {
+    class: svc
+  }
+}
+
+user -> app.ui: 操作する
+app.ui <-> app.desk: メソッド呼び出し / イベント
+app.desk -> app.go.catalog
+app.desk -> app.go.homestore
+app.desk -> app.go.skills
+app.desk -> app.go.runs
+
+app.go.catalog -> app.go.atelier
+app.go.homestore -> app.go.atelier
+app.go.atelier -> app.go.job: 起動
+app.go.job -> external.cli: 子プロセス (JSON)
+app.go.homestore -> external.home: 読み書き・監視
+app.go.skills -> external.skilldir: 読む
+app.go.runs -> external.repo: 読む
+app.go.paths -> external.appdata: 読み書き
+external.cli -> external.home: 検証・保存予定 {style.stroke-dash: 4}
