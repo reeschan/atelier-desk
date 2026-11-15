@@ -1,0 +1,6 @@
+{
+  "version": 1,
+  "overrides": {
+    "review": {"agent": "claude"}
+  }
+}

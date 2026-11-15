@@ -1,0 +1,55 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install wails
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.17.1
+
+      - name: Install frontend dependencies
+        run: npm --prefix frontend ci
+
+      - name: Typecheck frontend
+        run: npm --prefix frontend run typecheck
+
+      - name: Prepare frontend/dist for go:embed
+        shell: bash
+        run: |
+          mkdir -p frontend/dist
+          touch frontend/dist/.gitkeep
+
+      - name: Test Go
+        run: go test ./...
+
+      - name: Test frontend
+        run: npm --prefix frontend run test
+
+      - name: Build
+        run: wails build -clean
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: atelier-${{ matrix.os }}
+          path: build/bin/

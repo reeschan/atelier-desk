@@ -1,0 +1,1 @@
+{"schema": 1, "recorded_at": "2026-11-12T08:00:00+09:00", "repo": "atelier-desk-wt1", "work_key": "atelier-desk:feat/y:W-005", "pbi": "PBI-001", "report": "PBI-001", "attempt": 1, "run_id": null, "step": 1, "rework": 0, "tier": "sonnet", "runner": "agent", "model": "model-a", "effort": "high", "verify": null, "judged": {"outcome": "差し戻し", "findings": null, "cause": ["spec"]}}

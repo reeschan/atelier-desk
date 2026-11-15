@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "rules": [
+    {"match": "docs", "agent": "claude"},
+    {"match": "*", "agent": "codex"}
+  ]
+}

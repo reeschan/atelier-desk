@@ -1,0 +1,8 @@
+/atelier-source/
+/.atelier-tmp/
+frontend/node_modules/
+frontend/dist/
+build/bin/
+/docs/pbi/
+/node_modules/
+/*.exe
