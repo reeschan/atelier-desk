@@ -2,8 +2,8 @@ name: release
 
 # main への push で build が通ったら、そのコミットから
 # release/vX.Y.Z ブランチ・タグ vX.Y.Z・GitHub Release (ビルド添付) を作る。
-# 版は前のタグの patch を 1 つ上げる。マージした PR に release:minor / release:major
-# ラベルがあればそちらを上げる。タグが 1 つも無ければ v0.1.0 から始める。
+# 版は前のタグの patch を 1 つ上げる。前のタグからこのコミットまでに入った PR に
+# release:minor / release:major ラベルがあればそちらを上げる。タグが 1 つも無ければ v0.1.0 から始める。
 on:
   workflow_run:
     workflows: [build]
@@ -39,35 +39,61 @@ jobs:
         run: |
           set -euo pipefail
           git fetch --tags --force
+          semver='^v[0-9]+\.[0-9]+\.[0-9]+$'
 
-          # 同じコミットに版のタグが既にあれば (再実行など) 何もしない
-          if git tag --points-at "$SHA" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
-            echo "skip=true" >> "$GITHUB_OUTPUT"
-            echo "このコミットは既にリリース済み"
+          # 再実行: このコミットに版のタグがあれば、Release が欠けているときだけ作り直す
+          tagged=$(git tag --points-at "$SHA" | grep -E "$semver" | head -n1 || true)
+          if [ -n "$tagged" ]; then
+            if gh release view "$tagged" >/dev/null 2>&1; then
+              echo "mode=skip" >> "$GITHUB_OUTPUT"
+              echo "$tagged は既にリリース済み"
+            else
+              echo "mode=release-only" >> "$GITHUB_OUTPUT"
+              echo "version=$tagged" >> "$GITHUB_OUTPUT"
+              echo "$tagged のタグはあるが Release が無いので作り直す"
+            fi
             exit 0
           fi
 
-          last=$(git tag --list 'v*' --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n1 || true)
-          labels=$(gh api "repos/$GITHUB_REPOSITORY/commits/$SHA/pulls" --jq '[.[].labels[].name] | join(",")' || true)
-          echo "前の版: ${last:-なし} / ラベル: ${labels:-なし}"
+          last=$(git tag --list 'v*' --sort=-v:refname | grep -E "$semver" | head -n1 || true)
 
           if [ -z "$last" ]; then
             next=v0.1.0
           else
+            # 後のコミットが先にリリースされていたら、このコミットはそこに含まれるので切らない
+            if git merge-base --is-ancestor "$SHA" "$last"; then
+              echo "mode=skip" >> "$GITHUB_OUTPUT"
+              echo "$SHA は $last に含まれる (後のコミットが先にリリース済み)"
+              exit 0
+            fi
+            if ! git merge-base --is-ancestor "$last" "$SHA"; then
+              echo "::error::$last が $SHA の祖先ではない。版を決められない"
+              exit 1
+            fi
+
+            # 前のタグからこのコミットまでに入った PR のラベルをすべて見る
+            # (待機中に置き換えられた実行の分もここで拾う)。取得の失敗は止める
+            labels=""
+            for c in $(git rev-list "$last..$SHA"); do
+              l=$(gh api "repos/$GITHUB_REPOSITORY/commits/$c/pulls" --jq '[.[].labels[].name] | join(",")')
+              labels="$labels,$l"
+            done
+            echo "前の版: $last / ラベル: ${labels:-なし}"
+
             IFS=. read -r major minor patch <<< "${last#v}"
-            case ",$labels," in
+            case "$labels," in
               *,release:major,*) major=$((major + 1)); minor=0; patch=0 ;;
               *,release:minor,*) minor=$((minor + 1)); patch=0 ;;
               *) patch=$((patch + 1)) ;;
             esac
             next="v$major.$minor.$patch"
           fi
+          echo "mode=full" >> "$GITHUB_OUTPUT"
           echo "version=$next" >> "$GITHUB_OUTPUT"
-          echo "skip=false" >> "$GITHUB_OUTPUT"
           echo "次の版: $next"
 
       - name: Download build artifacts
-        if: steps.ver.outputs.skip == 'false'
+        if: steps.ver.outputs.mode != 'skip'
         uses: actions/download-artifact@v4
         with:
           run-id: ${{ github.event.workflow_run.id }}
@@ -75,15 +101,20 @@ jobs:
           path: dist
           merge-multiple: true
 
-      - name: Create release branch, tag and GitHub Release
-        if: steps.ver.outputs.skip == 'false'
+      - name: Create release branch and tag
+        if: steps.ver.outputs.mode == 'full'
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          set -euo pipefail
+          # ブランチとタグは両方できるか、どちらもできないか
+          git push --atomic origin "$SHA:refs/heads/release/$VERSION" "$SHA:refs/tags/$VERSION"
+
+      - name: Create GitHub Release
+        if: steps.ver.outputs.mode != 'skip'
         env:
           VERSION: ${{ steps.ver.outputs.version }}
         run: |
           set -euo pipefail
           ls -l dist
-          git push origin "$SHA:refs/heads/release/$VERSION"
-          gh release create "$VERSION" dist/*.zip \
-            --target "$SHA" \
-            --title "$VERSION" \
-            --generate-notes
+          gh release create "$VERSION" dist/*.zip --verify-tag --title "$VERSION" --generate-notes
