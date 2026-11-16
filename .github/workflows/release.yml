@@ -42,9 +42,13 @@ jobs:
           git fetch --tags --force
           last=$(git tag --list 'v*' --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n1 || true)
           # 前のリリースより後のコミットを、件数の上限なしに新しい順で見る
-          range=origin/main
-          if [ -n "$last" ]; then range="$last..origin/main"; fi
-          for c in $(git rev-list --first-parent "$range"); do
+          # 前のタグのコミット自身も最後に見る (タグはあるが Release が無いときの復旧のため)
+          if [ -n "$last" ]; then
+            commits="$(git rev-list --first-parent "$last..origin/main") $(git rev-list -n1 "$last")"
+          else
+            commits=$(git rev-list --first-parent origin/main)
+          fi
+          for c in $commits; do
             run=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/build.yml/runs?head_sha=$c&event=push&status=success&per_page=1" \
               --jq '.workflow_runs[0].id // empty')
             if [ -n "$run" ]; then
