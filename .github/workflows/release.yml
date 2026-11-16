@@ -1,6 +1,6 @@
 name: release
 
-# main への push で build が通ったら、build が通った main の最新のコミットから
+# main への push で build が終わるたびに、build が通った main の最新のコミットから
 # release/vX.Y.Z ブランチ・タグ vX.Y.Z・GitHub Release (ビルド添付) を作る。
 # 版は前のタグの patch を 1 つ上げる。前のタグからこのコミットまでに入った PR に
 # release:minor / release:major ラベルがあればそちらを上げる。タグが 1 つも無ければ v0.1.0 から始める。
@@ -21,9 +21,9 @@ concurrency:
 
 jobs:
   release:
-    if: >-
-      github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.event == 'push'
+    # build の成否は見ない。失敗した build の完了が待機中の実行を置き換えても、
+    # この実行が「build が通った main の最新」を切るので取りこぼさない
+    if: github.event.workflow_run.event == 'push'
     runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ github.token }}
@@ -50,13 +50,17 @@ jobs:
               exit 0
             fi
           done
-          echo "::error::build が通った main のコミットが見つからない"
-          exit 1
+          echo "::notice::build が通った main のコミットが無いので切らない"
+          echo "NO_TARGET=true" >> "$GITHUB_ENV"
 
       - name: Decide version
         id: ver
         run: |
           set -euo pipefail
+          if [ "${NO_TARGET:-}" = true ]; then
+            echo "mode=skip" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           git fetch --tags --force
           semver='^v[0-9]+\.[0-9]+\.[0-9]+$'
 
