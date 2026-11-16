@@ -33,18 +33,48 @@ jobs:
           ref: main
           fetch-depth: 0
 
+      # 前のタグに GitHub Release が欠けていたら (タグ作成後の失敗)、先にそれを作り直す
+      - name: Check previous tag's release
+        run: |
+          set -euo pipefail
+          git fetch --tags --force
+          last=$(git tag --list 'v*' --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n1 || true)
+          echo "LAST_TAG=$last" >> "$GITHUB_ENV"
+          if [ -z "$last" ] || gh release view "$last" >/dev/null 2>&1; then
+            exit 0
+          fi
+          c=$(git rev-list -n1 "$last")
+          run=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/build.yml/runs?head_sha=$c&event=push&status=success&per_page=1" \
+            --jq '.workflow_runs[0].id // empty')
+          if [ -z "$run" ]; then
+            echo "::error::$last の build の実行が見つからず Release を作り直せない"
+            exit 1
+          fi
+          echo "PREV_RUN_ID=$run" >> "$GITHUB_ENV"
+          echo "$last の Release が無いので作り直す (build run $run)"
+
+      - name: Download previous tag's build artifacts
+        if: env.PREV_RUN_ID != ''
+        uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ env.PREV_RUN_ID }}
+          github-token: ${{ github.token }}
+          path: dist-prev
+          merge-multiple: true
+
+      - name: Recreate previous tag's GitHub Release
+        if: env.PREV_RUN_ID != ''
+        run: gh release create "$LAST_TAG" dist-prev/*.zip --verify-tag --title "$LAST_TAG" --generate-notes
+
       # 起動のきっかけのコミットではなく、build が通った main の最新のコミットを切る。
       # build は順不同に終わり、待機中の実行は置き換えられるので、
       # 最後に動いた実行が最新を切れば取りこぼしがない
       - name: Pick newest built commit on main
         run: |
           set -euo pipefail
-          git fetch --tags --force
-          last=$(git tag --list 'v*' --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n1 || true)
           # 前のリリースより後のコミットを、件数の上限なしに新しい順で見る
-          # 前のタグのコミット自身も最後に見る (タグはあるが Release が無いときの復旧のため)
-          if [ -n "$last" ]; then
-            commits="$(git rev-list --first-parent "$last..origin/main") $(git rev-list -n1 "$last")"
+          if [ -n "$LAST_TAG" ]; then
+            commits=$(git rev-list --first-parent "$LAST_TAG..origin/main")
           else
             commits=$(git rev-list --first-parent origin/main)
           fi
