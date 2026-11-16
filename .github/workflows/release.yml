@@ -1,0 +1,89 @@
+name: release
+
+# main への push で build が通ったら、そのコミットから
+# release/vX.Y.Z ブランチ・タグ vX.Y.Z・GitHub Release (ビルド添付) を作る。
+# 版は前のタグの patch を 1 つ上げる。マージした PR に release:minor / release:major
+# ラベルがあればそちらを上げる。タグが 1 つも無ければ v0.1.0 から始める。
+on:
+  workflow_run:
+    workflows: [build]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: write
+  actions: read
+  pull-requests: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push'
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      SHA: ${{ github.event.workflow_run.head_sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+
+      - name: Decide version
+        id: ver
+        run: |
+          set -euo pipefail
+          git fetch --tags --force
+
+          # 同じコミットに版のタグが既にあれば (再実行など) 何もしない
+          if git tag --points-at "$SHA" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "このコミットは既にリリース済み"
+            exit 0
+          fi
+
+          last=$(git tag --list 'v*' --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n1 || true)
+          labels=$(gh api "repos/$GITHUB_REPOSITORY/commits/$SHA/pulls" --jq '[.[].labels[].name] | join(",")' || true)
+          echo "前の版: ${last:-なし} / ラベル: ${labels:-なし}"
+
+          if [ -z "$last" ]; then
+            next=v0.1.0
+          else
+            IFS=. read -r major minor patch <<< "${last#v}"
+            case ",$labels," in
+              *,release:major,*) major=$((major + 1)); minor=0; patch=0 ;;
+              *,release:minor,*) minor=$((minor + 1)); patch=0 ;;
+              *) patch=$((patch + 1)) ;;
+            esac
+            next="v$major.$minor.$patch"
+          fi
+          echo "version=$next" >> "$GITHUB_OUTPUT"
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+          echo "次の版: $next"
+
+      - name: Download build artifacts
+        if: steps.ver.outputs.skip == 'false'
+        uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+          path: dist
+          merge-multiple: true
+
+      - name: Create release branch, tag and GitHub Release
+        if: steps.ver.outputs.skip == 'false'
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          set -euo pipefail
+          ls -l dist
+          git push origin "$SHA:refs/heads/release/$VERSION"
+          gh release create "$VERSION" dist/*.zip \
+            --target "$SHA" \
+            --title "$VERSION" \
+            --generate-notes
