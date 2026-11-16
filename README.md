@@ -34,3 +34,13 @@ bash docs/pbi/tools/env.sh wails dev
 ```bash
 bash docs/pbi/tools/env.sh wails build
 ```
+
+## リリース
+
+`main` にマージして CI (`build`) が通ると、`release` ワークフローが次の 3 つを作ります。
+
+- ブランチ `release/vX.Y.Z`
+- タグ `vX.Y.Z`
+- Windows と macOS (arm64) のビルドを添付した GitHub Release
+
+版は前のタグの patch を 1 つ上げます。minor や major を上げたいときは、PR に `release:minor` か `release:major` のラベルを付けてからマージします。最初のリリースは `v0.1.0` です。
