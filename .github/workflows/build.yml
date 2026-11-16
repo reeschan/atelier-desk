@@ -10,7 +10,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, macos-latest]
+        include:
+          - os: windows-latest
+            asset: atelier-desk-windows-amd64.zip
+          - os: macos-latest
+            asset: atelier-desk-macos-arm64.zip
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -49,7 +53,18 @@ jobs:
       - name: Build
         run: wails build -clean
 
+      # upload-artifact は実行権限を落とすので、.app はここで zip にしてから渡す
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Compress-Archive -Path build/bin/atelier-desk.exe -DestinationPath ${{ matrix.asset }}
+
+      - name: Package (macOS)
+        if: runner.os == 'macOS'
+        run: ditto -c -k --keepParent build/bin/atelier-desk.app ${{ matrix.asset }}
+
       - uses: actions/upload-artifact@v4
         with:
           name: atelier-${{ matrix.os }}
-          path: build/bin/
+          path: ${{ matrix.asset }}
+          if-no-files-found: error
