@@ -1,6 +1,6 @@
 name: release
 
-# main への push で build が通ったら、そのコミットから
+# main への push で build が通ったら、build が通った main の最新のコミットから
 # release/vX.Y.Z ブランチ・タグ vX.Y.Z・GitHub Release (ビルド添付) を作る。
 # 版は前のタグの patch を 1 つ上げる。前のタグからこのコミットまでに入った PR に
 # release:minor / release:major ラベルがあればそちらを上げる。タグが 1 つも無ければ v0.1.0 から始める。
@@ -27,12 +27,31 @@ jobs:
     runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ github.token }}
-      SHA: ${{ github.event.workflow_run.head_sha }}
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: main
           fetch-depth: 0
+
+      # 起動のきっかけのコミットではなく、build が通った main の最新のコミットを切る。
+      # build は順不同に終わり、待機中の実行は置き換えられるので、
+      # 最後に動いた実行が最新を切れば取りこぼしがない
+      - name: Pick newest built commit on main
+        run: |
+          set -euo pipefail
+          runs=$(gh run list --workflow build.yml --branch main --event push --status success \
+            --limit 100 --json headSha,databaseId --jq '.[] | "\(.headSha) \(.databaseId)"')
+          for c in $(git rev-list --first-parent --max-count 100 origin/main); do
+            run=$(printf '%s\n' "$runs" | awk -v c="$c" '$1 == c { print $2; exit }')
+            if [ -n "$run" ]; then
+              echo "SHA=$c" >> "$GITHUB_ENV"
+              echo "BUILD_RUN_ID=$run" >> "$GITHUB_ENV"
+              echo "対象: $c (build run $run)"
+              exit 0
+            fi
+          done
+          echo "::error::build が通った main のコミットが見つからない"
+          exit 1
 
       - name: Decide version
         id: ver
@@ -96,7 +115,7 @@ jobs:
         if: steps.ver.outputs.mode != 'skip'
         uses: actions/download-artifact@v4
         with:
-          run-id: ${{ github.event.workflow_run.id }}
+          run-id: ${{ env.BUILD_RUN_ID }}
           github-token: ${{ github.token }}
           path: dist
           merge-multiple: true
